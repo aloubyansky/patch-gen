@@ -26,6 +26,7 @@ import static java.lang.System.getProperty;
 import static java.lang.System.getSecurityManager;
 
 import javax.xml.stream.XMLStreamException;
+
 import java.io.BufferedInputStream;
 import java.io.File;
 import java.io.FileInputStream;
@@ -36,8 +37,8 @@ import java.util.Set;
 import java.util.TreeSet;
 
 import org.jboss.as.patching.IoUtils;
-import org.jboss.as.patching.PatchMessages;
 import org.jboss.as.patching.ZipUtils;
+import org.jboss.as.patching.logging.PatchLogger;
 import org.jboss.as.patching.metadata.Patch;
 import org.jboss.as.version.ProductConfig;
 import org.jboss.modules.Module;
@@ -99,7 +100,7 @@ public class PatchGenerator {
                 }
             }
             if (!required.isEmpty()) {
-                System.err.printf(PatchMessages.MESSAGES.missingRequiredArgs(required));
+                System.err.printf(PatchLogger.ROOT_LOGGER.missingRequiredArgs(required));
                 usage();
                 return;
             }
@@ -211,11 +212,11 @@ public class PatchGenerator {
                     String val = arg.substring("--applies-to-dist=".length());
                     oldFile = new File(val);
                     if (!oldFile.exists()) {
-                        System.err.printf(PatchMessages.MESSAGES.fileDoesNotExist(arg));
+                        System.err.printf(PatchLogger.ROOT_LOGGER.fileDoesNotExist(arg));
                         usage();
                         return null;
                     } else if (!oldFile.isDirectory()) {
-                        System.err.printf(PatchMessages.MESSAGES.fileIsNotADirectory(arg));
+                        System.err.printf(PatchLogger.ROOT_LOGGER.fileIsNotADirectory(arg));
                         usage();
                         return null;
                     }
@@ -223,11 +224,11 @@ public class PatchGenerator {
                     String val = arg.substring("--updated-dist=".length());
                     newFile = new File(val);
                     if (!newFile.exists()) {
-                        System.err.printf(PatchMessages.MESSAGES.fileDoesNotExist(arg));
+                        System.err.printf(PatchLogger.ROOT_LOGGER.fileDoesNotExist(arg));
                         usage();
                         return null;
                     } else if (!newFile.isDirectory()) {
-                        System.err.printf(PatchMessages.MESSAGES.fileIsNotADirectory(arg));
+                        System.err.printf(PatchLogger.ROOT_LOGGER.fileIsNotADirectory(arg));
                         usage();
                         return null;
                     }
@@ -235,11 +236,11 @@ public class PatchGenerator {
                     String val = arg.substring("--patch-config=".length());
                     patchConfig = new File(val);
                     if (!patchConfig.exists()) {
-                        System.err.printf(PatchMessages.MESSAGES.fileDoesNotExist(arg));
+                        System.err.printf(PatchLogger.ROOT_LOGGER.fileDoesNotExist(arg));
                         usage();
                         return null;
                     } else if (patchConfig.isDirectory()) {
-                        System.err.printf(PatchMessages.MESSAGES.fileIsADirectory(arg));
+                        System.err.printf(PatchLogger.ROOT_LOGGER.fileIsADirectory(arg));
                         usage();
                         return null;
                     }
@@ -247,7 +248,7 @@ public class PatchGenerator {
                     String val = arg.substring("--output-file=".length());
                     patchFile = new File(val);
                     if (patchFile.exists() && patchFile.isDirectory()) {
-                        System.err.printf(PatchMessages.MESSAGES.fileIsADirectory(arg));
+                        System.err.printf(PatchLogger.ROOT_LOGGER.fileIsADirectory(arg));
                         usage();
                         return null;
                     }
@@ -263,14 +264,14 @@ public class PatchGenerator {
                     return null;
                 }
             } catch (IndexOutOfBoundsException e) {
-                System.err.printf(PatchMessages.MESSAGES.argumentExpected(arg));
+                System.err.printf(PatchLogger.ROOT_LOGGER.argumentExpected(arg));
                 usage();
                 return null;
             }
         }
 
         if (patchConfig == null) {
-            System.err.printf(PatchMessages.MESSAGES.missingRequiredArgs(Collections.singleton("--patch-config")));
+            System.err.printf(PatchLogger.ROOT_LOGGER.missingRequiredArgs(Collections.singleton("--patch-config")));
             usage();
             return null;
         }
@@ -283,22 +284,22 @@ public class PatchGenerator {
         Usage usage = new Usage();
 
         usage.addArguments("--applies-to-dist=<file>");
-        usage.addInstruction(PatchMessages.MESSAGES.argAppliesToDist());
+        usage.addInstruction(PatchGenLogger.ROOT.argAppliesToDist());
 
         usage.addArguments("-h", "--help");
-        usage.addInstruction(PatchMessages.MESSAGES.argHelp());
+        usage.addInstruction(PatchGenLogger.ROOT.argHelp());
 
         usage.addArguments("--output-file=<file>");
-        usage.addInstruction(PatchMessages.MESSAGES.argOutputFile());
+        usage.addInstruction(PatchGenLogger.ROOT.argOutputFile());
 
         usage.addArguments("--patch-config=<file>");
-        usage.addInstruction(PatchMessages.MESSAGES.argPatchConfig());
+        usage.addInstruction(PatchGenLogger.ROOT.argPatchConfig());
 
         usage.addArguments("--updated-dist=<file>");
-        usage.addInstruction(PatchMessages.MESSAGES.argUpdatedDist());
+        usage.addInstruction(PatchGenLogger.ROOT.argUpdatedDist());
 
         usage.addArguments("-v", "--version");
-        usage.addInstruction(PatchMessages.MESSAGES.argVersion());
+        usage.addInstruction(PatchGenLogger.ROOT.argVersion());
 
         usage.addArguments("--detailed-inspection");
         usage.addInstruction("Enable detailed inspection for all modules.");

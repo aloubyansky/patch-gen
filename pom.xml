@@ -32,7 +32,8 @@
             For example: <version.org.jboss.as.console>
          -->
 
-        <version.org.wildfly>7.3.1.Final-redhat-2</version.org.wildfly>
+        <version.org.jboss.logging>1.2.0.Final</version.org.jboss.logging>
+        <version.org.wildfly>1.0.0.Beta4-SNAPSHOT</version.org.wildfly>
         <version.junit>4.11</version.junit>
 
         <!-- Surefire args -->
@@ -112,7 +113,13 @@
     <dependencies>
 
         <dependency>
-            <groupId>org.wildfly</groupId>
+            <groupId>org.jboss.logging</groupId>
+            <artifactId>jboss-logging-annotations</artifactId>
+            <version>${version.org.jboss.logging}</version>
+        </dependency>
+
+        <dependency>
+            <groupId>org.wildfly.core</groupId>
             <artifactId>wildfly-patching</artifactId>
             <version>${version.org.wildfly}</version>
         </dependency>
