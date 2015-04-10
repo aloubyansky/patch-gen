@@ -21,35 +21,29 @@
  */
 package org.jboss.as.patching.util;
 
+import java.io.BufferedReader;
 import java.io.BufferedWriter;
 import java.io.File;
+import java.io.FileReader;
 import java.io.FileWriter;
 import java.io.IOException;
-import java.io.InputStream;
-import java.util.zip.ZipEntry;
-import java.util.zip.ZipException;
-import java.util.zip.ZipFile;
-
-import javax.xml.stream.XMLStreamException;
-
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
 import org.jboss.as.patching.IoUtils;
 import org.jboss.as.patching.PatchingException;
 import org.jboss.as.patching.logging.PatchLogger;
 import org.jboss.as.patching.metadata.Patch;
 import org.jboss.as.patching.metadata.Patch.PatchType;
-import org.jboss.as.patching.metadata.PatchXml;
-
 
 /**
  * Patch repository.
  *
  * Every patch file added to the repository is copied to ROOT/patches directory.
  *
- * When a new patch is added, a new directory ROOT/identity-name-version corresponding
- * to the target identity of the patch is created (unless one already exists).
- * If the patch is a one-off patch, the name of the patch file is added to
- * ROOT/identity-name-version/patches.txt.
- * If the patch is a cumulative patch, the name of the patch file is added to
+ * When a new patch is added, a new directory ROOT/identity-name-version corresponding to the target identity of the patch is
+ * created (unless one already exists). If the patch is a one-off patch, the name of the patch file is added to
+ * ROOT/identity-name-version/patches.txt. If the patch is a cumulative patch, the name of the patch file is added to
  * ROOT/identity-name-version/update.txt.
  *
  * <pre>
@@ -86,7 +80,7 @@ public class PatchRepository {
     private final File patchesDir;
 
     private PatchRepository(File root) {
-        if(root == null) {
+        if (root == null) {
             throw new IllegalArgumentException("root is null");
         }
         this.root = root;
@@ -98,59 +92,42 @@ public class PatchRepository {
     }
 
     public File getIdentityDir(String name, String version) {
+        if (name == null) {
+            throw new IllegalArgumentException("name is null");
+        }
+        if (version == null) {
+            throw new IllegalArgumentException("version is null");
+        }
         return new File(root, getIdentityDirName(name, version));
     }
 
     public void addPatch(File patchFile) throws PatchingException {
 
-        if(patchFile == null) {
+        if (patchFile == null) {
             throw new IllegalArgumentException("patchFile is null");
         }
 
-        if(!patchFile.exists()) {
+        if (!patchFile.exists()) {
             throw new PatchingException(PatchLogger.ROOT_LOGGER.fileDoesNotExist(patchFile.getAbsolutePath()));
         }
-        if(patchFile.isDirectory()) {
+        if (patchFile.isDirectory()) {
             throw new PatchingException(PatchLogger.ROOT_LOGGER.fileIsADirectory(patchFile.getAbsolutePath()));
         }
 
-        Patch patch;
-        ZipFile zipFile = null;
-        try {
-            zipFile = new ZipFile(patchFile);
-            final ZipEntry patchXmlEntry = zipFile.getEntry(PatchXml.PATCH_XML);
-            if(patchXmlEntry == null) {
-                PatchLogger.ROOT_LOGGER.patchIsMissingFile(PatchXml.PATCH_XML);
-            }
-
-            final InputStream patchXmlIs = zipFile.getInputStream(patchXmlEntry);
-            try {
-                patch = PatchXml.parse(patchXmlIs).resolvePatch(null, null);
-            } catch (XMLStreamException e) {
-                throw new PatchingException("Failed to parse " + PatchXml.PATCH_XML + " from " + patchFile.getAbsolutePath(), e);
-            } finally {
-                IoUtils.safeClose(patchXmlIs);
-            }
-        } catch (ZipException e) {
-            throw new PatchingException(PatchLogger.ROOT_LOGGER.fileIsNotReadable(patchFile.getAbsolutePath()));
-        } catch (IOException e) {
-            throw new PatchingException(PatchLogger.ROOT_LOGGER.fileIsNotReadable(patchFile.getAbsolutePath()));
-        } finally {
-            IoUtils.safeClose(zipFile);
-        }
+        final Patch patch = PatchUtil.readMetaData(patchFile);
 
         File targetFile = new File(patchesDir, patchFile.getName());
-        if(targetFile.exists()) {
+        if (targetFile.exists()) {
             final StringBuilder buf = new StringBuilder();
             buf.append(getPatchFileName(patch));
             int dot = patchFile.getName().lastIndexOf('.');
-            if(dot < 0) {
+            if (dot < 0) {
                 buf.append(".zip");
             } else {
                 buf.append(patchFile.getName().substring(dot));
             }
             targetFile = new File(patchesDir, buf.toString());
-            if(targetFile.exists()) {
+            if (targetFile.exists()) {
                 throw new PatchingException("File already exists in the repository" + targetFile.getAbsolutePath());
             }
         }
@@ -158,27 +135,212 @@ public class PatchRepository {
         try {
             IoUtils.copyFile(patchFile, targetFile);
         } catch (IOException e) {
-            throw new PatchingException("Failed to copy " + patchFile.getAbsolutePath() + " to " + targetFile.getAbsolutePath(), e);
+            throw new PatchingException(
+                    "Failed to copy " + patchFile.getAbsolutePath() + " to " + targetFile.getAbsolutePath(), e);
         }
 
         final File identityDir = new File(root, getIdentityDirName(patch));
-        if(!identityDir.exists()) {
-            if(!identityDir.mkdir()) {
+        if (!identityDir.exists()) {
+            if (!identityDir.mkdir()) {
                 throw new PatchingException("Failed to create identity record directory " + identityDir.getAbsolutePath());
             }
         }
 
-        if(patch.getIdentity().getPatchType() == PatchType.CUMULATIVE) {
+        if (patch.getIdentity().getPatchType() == PatchType.CUMULATIVE) {
             final File updateFile = new File(identityDir, IDENTITY_UPDATES_FILE);
-            if(updateFile.exists()) {
+            if (updateFile.exists()) {
                 // for now i assume there could only be one update to the next micro version
                 throw new PatchingException("There already is an update available for " + getIdentityDirName(patch));
             }
             appendFile(updateFile, targetFile.getName());
-        } else if(patch.getIdentity().getPatchType() == PatchType.ONE_OFF) {
+        } else if (patch.getIdentity().getPatchType() == PatchType.ONE_OFF) {
             appendFile(new File(identityDir, IDENTITY_PATCHES_FILE), targetFile.getName());
         } else {
             throw new PatchingException("Unexpected patch type " + patch.getIdentity().getPatchType());
+        }
+    }
+
+    public boolean hasPatches(String identityName, String identityVersion) throws PatchingException {
+        final File f = new File(getIdentityDir(identityName, identityVersion), IDENTITY_PATCHES_FILE);
+        if (!f.exists()) {
+            return false;
+        }
+        return !readList(f).isEmpty();
+    }
+
+    public List<Patch> getPatchesInfo(String identityName, String identityVersion) throws PatchingException {
+        final File f = new File(getIdentityDir(identityName, identityVersion), IDENTITY_PATCHES_FILE);
+        if (!f.exists()) {
+            return Collections.emptyList();
+        }
+        final List<String> fileNames = readList(f);
+        final List<Patch> patches = new ArrayList<Patch>(fileNames.size());
+        for (String fileName : fileNames) {
+            patches.add(readMetaData(fileName));
+        }
+        return patches;
+    }
+
+    public boolean hasUpdate(String identityName, String identityVersion) throws PatchingException {
+        final File f = new File(getIdentityDir(identityName, identityVersion), IDENTITY_UPDATES_FILE);
+        if (!f.exists()) {
+            return false;
+        }
+        return !readList(f).isEmpty();
+    }
+
+    public File bundlePatches(String identityName, String identityVersion, File targetDir) throws PatchingException {
+
+        if (targetDir == null) {
+            throw new IllegalArgumentException("targetDir is null");
+        }
+
+        final PatchBundleBuilder bundleBuilder = PatchBundleBuilder.create();
+        bundlePatches(identityName, identityVersion, bundleBuilder);
+
+        ensureDir(targetDir);
+        final File targetFile = new File(targetDir, getIdentityDirName(identityName, identityVersion) + "-" + PATCHES + ".zip");
+        bundleBuilder.build(targetFile);
+        return targetFile;
+    }
+
+    public void getUpdateToNext(String identityName, String identityVersion, boolean includePatches, File targetFile)
+            throws PatchingException {
+
+        final File update = getUpdateOnly(identityName, identityVersion);
+        if(update == null) {
+            return;
+        }
+
+        if (!includePatches) {
+            try {
+                IoUtils.copyFile(update, targetFile);
+                return;
+            } catch (IOException e) {
+                throw new PatchingException("Failed to copy " + update.getAbsolutePath() + " to "
+                        + targetFile.getAbsolutePath());
+            }
+        }
+
+        final Patch updateMetaData = PatchUtil.readMetaData(update);
+        final PatchBundleBuilder bundleBuilder = PatchBundleBuilder.create();
+        bundleBuilder.add(update);
+        bundlePatches(updateMetaData.getIdentity().getName(), updateMetaData.getIdentity().getVersion(), bundleBuilder);
+        bundleBuilder.build(targetFile);
+    }
+
+    public void getUpdateToLatest(String identityName, String identityVersion, boolean includePatches, File targetFile)
+            throws PatchingException {
+        getUpdate(identityName, identityVersion, null, includePatches, targetFile);
+    }
+
+    public void getUpdate(String identityName, String identityVersion, String toVersion, boolean includePatches, File targetFile)
+            throws PatchingException {
+        File update = getUpdateOnly(identityName, identityVersion);
+        if(update == null) {
+            return;
+        }
+        final PatchBundleBuilder bundleBuilder = PatchBundleBuilder.create();
+        boolean reachedTargetVersion = false;
+        while(update != null && !reachedTargetVersion) {
+            bundleBuilder.add(update);
+            final Patch updateMetaData = PatchUtil.readMetaData(update);
+            identityName = updateMetaData.getIdentity().getName();
+            identityVersion = updateMetaData.getIdentity().getVersion();
+            if(identityVersion.equals(toVersion)) {
+                reachedTargetVersion = true;
+            } else {
+                update = getUpdateOnly(identityName, identityVersion);
+            }
+        }
+        if(!reachedTargetVersion) {
+            throw new PatchingException("Failed to locate update path to " + toVersion + ", latest available is " + identityVersion);
+        }
+        if (includePatches) {
+            bundlePatches(identityName, identityVersion, bundleBuilder);
+        }
+        bundleBuilder.build(targetFile);
+    }
+
+    /**
+     * @param identityName
+     * @param identityVersion
+     * @param bundleBuilder
+     * @throws PatchingException
+     */
+    private void bundlePatches(String identityName, String identityVersion, final PatchBundleBuilder bundleBuilder)
+            throws PatchingException {
+        final File f = new File(getIdentityDir(identityName, identityVersion), IDENTITY_PATCHES_FILE);
+        if (!f.exists()) {
+            return;
+        }
+
+        final List<String> fileNames = readList(f);
+        if (fileNames.isEmpty()) {
+            return;
+        }
+
+        for (String fileName : fileNames) {
+            bundleBuilder.add(new File(patchesDir, fileName));
+        }
+    }
+
+    private File getUpdateOnly(String identityName, String identityVersion) throws PatchingException {
+
+        final File f = new File(getIdentityDir(identityName, identityVersion), IDENTITY_UPDATES_FILE);
+        if (!f.exists()) {
+            return null;
+        }
+        final List<String> updates = readList(f);
+        if (updates.isEmpty()) {
+            return null;
+        }
+
+        if(updates.size() > 1) {
+            throw new PatchingException("There is more than one update for " + identityName + "-" + identityVersion + ": " + updates);
+        }
+        final File update = new File(patchesDir, updates.get(0));
+        if(!update.isFile()) {
+            throw new PatchingException("Referenced file does not exist " + update.getAbsolutePath());
+        }
+        return update;
+    }
+
+    private Patch readMetaData(String fileName) throws PatchingException {
+        assert fileName != null : "fileName is null";
+        return PatchUtil.readMetaData(new File(patchesDir, fileName));
+    }
+
+    /**
+     * @param targetDir
+     * @throws PatchingException
+     */
+    private void ensureDir(File targetDir) throws PatchingException {
+        if (!targetDir.exists()) {
+            if (targetDir.mkdirs()) {
+                throw new PatchingException("Failed to create target directory " + targetDir.getAbsolutePath());
+            }
+        } else if (!targetDir.isDirectory()) {
+            throw new PatchingException("Target path is not a directory " + targetDir.getAbsolutePath());
+        }
+    }
+
+    private List<String> readList(File f) throws PatchingException {
+
+        BufferedReader reader = null;
+        try {
+            reader = new BufferedReader(new FileReader(f));
+            String line = reader.readLine();
+            final List<String> list = new ArrayList<String>();
+            while (line != null) {
+                list.add(line);
+                line = reader.readLine();
+            }
+            return list;
+        } catch (IOException e) {
+            throw new PatchingException("Failed to read " + f.getAbsolutePath(), e);
+        } finally {
+            IoUtils.safeClose(reader);
         }
     }
 
@@ -193,7 +355,7 @@ public class PatchRepository {
             writer = new BufferedWriter(new FileWriter(file, true));
             writer.append(line);
             writer.newLine();
-        } catch(IOException e) {
+        } catch (IOException e) {
             throw new PatchingException("Failed to write to " + file.getAbsolutePath(), e);
         } finally {
             IoUtils.safeClose(writer);
@@ -212,9 +374,8 @@ public class PatchRepository {
     private static String getPatchFileName(Patch patch) {
         assert patch != null : "patch is null";
         final StringBuilder buf = new StringBuilder();
-        buf.append(patch.getIdentity().getName())
-            .append('-').append(patch.getIdentity().getVersion())
-            .append('-').append(patch.getPatchId());
+        buf.append(patch.getIdentity().getName()).append('-').append(patch.getIdentity().getVersion()).append('-')
+                .append(patch.getPatchId());
         return buf.toString();
     }
 }
