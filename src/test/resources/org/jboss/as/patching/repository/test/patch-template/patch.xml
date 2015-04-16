@@ -1,0 +1,17 @@
+<?xml version="1.0" ?>
+
+<patch xmlns="urn:jboss:patch:1.1" id="@patch-id">
+    <@patch-type name="@identity-name" version="@identity-version" @to-version/>
+    <element id="@patch-element-id">
+        <description>
+            no description
+        </description>
+        <@patch-type name="@layer"/>
+        <modules>
+            <added name="org.jboss.test" hash="bd99de0ca1311cd6aca3511809edc2d1e59d2130"/>
+        </modules>
+    </element>
+    <misc-files>
+        <updated path="bin/standalone.sh" hash="5b789293b3b849babb4041711b841e0fd0c53abc" new-hash="f80c5aa2d7aef4d5191786cb1e9e669253c25926"/>
+    </misc-files>
+</patch>

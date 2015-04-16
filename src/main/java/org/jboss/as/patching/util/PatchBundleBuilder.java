@@ -69,7 +69,7 @@ public class PatchBundleBuilder {
         return this;
     }
 
-    public BundledPatch build(File targetFile) throws PatchingException {
+    public BundledPatch build(File targetFile, boolean deleteFiles) throws PatchingException {
 
         if (targetFile == null) {
             throw new IllegalArgumentException("targetFile is null");
@@ -127,6 +127,13 @@ public class PatchBundleBuilder {
             throw new PatchingException("Failed to write " + PatchBundleXml.MULTI_PATCH_XML, e);
         } finally {
             IoUtils.safeClose(zipOut);
+            if(deleteFiles) {
+                for(File f : files) {
+                    if(!f.delete()) {
+                        f.deleteOnExit();
+                    }
+                }
+            }
         }
     }
 }

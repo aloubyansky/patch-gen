@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<module xmlns="urn:jboss:module:1.2" name="org.jboss.test" slot="main">
+  <resources>
+    <resource-root path="."/>
+    <resource-root path="test49959511531619079430.tmp"/>
+  </resources>
+</module>

@@ -22,23 +22,30 @@
 
 package org.jboss.as.patching.repository.test;
 
+import static org.jboss.as.patching.IoUtils.copyStream;
+import static org.jboss.as.patching.IoUtils.safeClose;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
+import java.io.BufferedInputStream;
 import java.io.BufferedReader;
 import java.io.File;
+import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.FileReader;
 import java.io.IOException;
-import java.io.InputStream;
-import java.io.InputStreamReader;
+import java.net.URL;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 
 import org.jboss.as.patching.IoUtils;
+import org.jboss.as.patching.metadata.Patch;
 import org.jboss.as.patching.metadata.PatchXml;
 import org.jboss.as.patching.util.PatchRepository;
 import org.junit.AfterClass;
@@ -79,39 +86,41 @@ public class AddPatchFileTestCase {
         final File repoDir = new File(testDir, "repo");
         final PatchRepository repo = PatchRepository.create(repoDir);
 
-        if(repo.getPatchesDir().exists()) {
-            assertEquals(0, repo.getPatchesDir().list().length);
-        }
-        final File p100 = repo.getIdentityDir("product", "1.0.0");
-        assertFalse(p100.exists());
+        assertFalse(repo.hasPatches("product", "1.0.1"));
+        assertFalse(repo.hasUpdate("product", "1.0.0"));
 
-        final File oneoff1 = createPatch("oneoff1", "product", "1.0.0");
+        final File oneoff1 = createPatch("product", "1.0.1", "oneoff1", "base-oneoff1");
         repo.addPatch(oneoff1);
 
-        assertTrue(repo.getPatchesDir().exists());
-        assertTrue(p100.exists());
+        assertTrue(repo.hasPatches("product", "1.0.1"));
+        assertFalse(repo.hasUpdate("product", "1.0.0"));
 
-        final File p100Patches = new File(p100, PatchRepository.IDENTITY_PATCHES_FILE);
-        final File p100Updates = new File(p100, PatchRepository.IDENTITY_UPDATES_FILE);
+        List<Patch> patches = repo.getPatchesInfo("product", "1.0.1");
+        assertEquals(1, patches.size());
+        //System.out.println(repo.getPatchXml("product", "1.0.1", "oneoff1", false));
 
-        assertEquals(1, repo.getPatchesDir().list().length);
-        assertTrue(p100Patches.exists());
-        assertContent(p100Patches, oneoff1.getName());
-        assertFalse(p100Updates.exists());
-
-        final File oneoff2 = createPatch("oneoff2", "product", "1.0.0");
+        final File oneoff2 = createPatch("product", "1.0.1", "oneoff2", "base-oneoff2");
         repo.addPatch(oneoff2);
 
-        assertEquals(2, repo.getPatchesDir().list().length);
-        assertContent(p100Patches, oneoff1.getName(), oneoff2.getName());
-        assertFalse(p100Updates.exists());
+        assertTrue(repo.hasPatches("product", "1.0.1"));
+        assertFalse(repo.hasUpdate("product", "1.0.0"));
 
-        final File update1 = createUpdate("cp1", "product", "1.0.0", "1.0.1");
+        patches = repo.getPatchesInfo("product", "1.0.1");
+        assertEquals(2, patches.size());
+        //System.out.println(repo.getPatchXml("product", "1.0.1", "oneoff2", false));
+
+        final File update1 = createUpdate("product", "1.0.0", "1.0.1", "cp1", "base-cp1");
         repo.addPatch(update1);
 
-        assertEquals(3, repo.getPatchesDir().list().length);
-        assertTrue(p100Updates.exists());
-        assertContent(p100Updates, update1.getName());
+        assertTrue(repo.hasPatches("product", "1.0.1"));
+        assertTrue(repo.hasUpdate("product", "1.0.0"));
+
+        patches = repo.getPatchesInfo("product", "1.0.1");
+        assertEquals(2, patches.size());
+
+        repo.getUpdateToLatest("product", "1.0.0", true, new File("/home/olubyans/patches/tests/latest-update.zip"));
+//        repo.getPatch("product", "1.0.0", "oneoff1", false, new File("/home/olubyans/patches/tests/oneoff1.zip"));
+//        repo.getPatch("product", "1.0.0", "cp1", true, new File("/home/olubyans/patches/tests/cp1.zip"));
     }
 
     protected void assertContent(File f, String... lines) throws Exception {
@@ -131,28 +140,43 @@ public class AddPatchFileTestCase {
         }
     }
 
-    protected File createPatch(String patchId, String identityName, String identityVersion) {
-        return createPatchFile(getClass().getResourceAsStream("patch-template-patch.xml"), patchId, identityName, identityVersion, null);
+    protected File createPatch(String identityName, String identityVersion, String patchId, String elementId) {
+        return createPatchFile(identityName, identityVersion, null, patchId, "base", elementId);
     }
 
-    protected File createUpdate(String patchId, String identityName, String identityVersion, String identityNextVersion) {
-        return createPatchFile(getClass().getResourceAsStream("update-template-patch.xml"), patchId, identityName, identityVersion, identityNextVersion);
+    protected File createUpdate(String identityName, String identityVersion, String identityNextVersion, String patchId, String elementId) {
+        return createPatchFile(identityName, identityVersion, identityNextVersion, patchId, "base", elementId);
     }
 
-    /**
-     * @param is
-     * @param patchId
-     * @param identityName
-     * @param identityVersion
-     * @return
-     */
-    private File createPatchFile(final InputStream is, String patchId, String identityName, String identityVersion, String identityNextVersion) {
-        Assert.assertNotNull(is);
-        final BufferedReader reader = new BufferedReader(new InputStreamReader(is));
+    private File createPatchFile(
+            String identityName,
+            String identityVersion, String identityNextVersion, String patchId,
+            String layer, String patchElementId) {
+
+        final URL patchTemplateURL = getClass().getResource("patch-template");
+        Assert.assertNotNull(patchTemplateURL);
+        final File patchTemplateDir = new File(patchTemplateURL.getFile());
 
         final File patchFile = new File(testDir, identityName + '-' + identityVersion + '-' + patchId + ".zip");
+
+        final Map<String,String> vars = new HashMap<String,String>();
+        vars.put("patch-id", patchId);
+        if(identityNextVersion == null) {
+            vars.put("patch-type", "no-upgrade");
+            vars.put("to-version", null);
+        } else {
+            vars.put("patch-type", "upgrade");
+            vars.put("to-version", "to-version=\"" + identityNextVersion + "\"");
+        }
+        vars.put("identity-name", identityName);
+        vars.put("identity-version", identityVersion);
+        vars.put("patch-element-id", patchElementId);
+        vars.put("layer", layer);
+
         ZipOutputStream zipOut = null;
+        BufferedReader reader = null;
         try {
+            reader = new BufferedReader(new FileReader(new File(patchTemplateDir, PatchXml.PATCH_XML)));
             zipOut = new ZipOutputStream(new FileOutputStream(patchFile));
             zipOut.putNextEntry(new ZipEntry(PatchXml.PATCH_XML));
 
@@ -164,19 +188,20 @@ public class AddPatchFileTestCase {
                     int from = 0;
                     while (at >= 0) {
                         buf.append(line.substring(from, at));
-                        if (line.startsWith("patch-id", at + 1)) {
-                            buf.append(patchId);
-                            from = at + "patch-id".length() + 1;
-                        } else if (line.startsWith("identity-name", at + 1)) {
-                            buf.append(identityName);
-                            from = at + "identity-name".length() + 1;
-                        } else if (line.startsWith("identity-version", at + 1)) {
-                            buf.append(identityVersion);
-                            from = at + "identity-version".length() + 1;
-                        } else if(identityNextVersion != null && line.startsWith("identity-next-version", at + 1)) {
-                            buf.append(identityNextVersion);
-                            from = at + "identity-next-version".length() + 1;
-                        } else {
+
+                        boolean replaced = false;
+                        for(String name : vars.keySet()) {
+                            if(line.startsWith(name, at + 1)) {
+                                final String value = vars.get(name);
+                                if(value != null) {
+                                    buf.append(value);
+                                }
+                                from = at + name.length() + 1;
+                                replaced = true;
+                                break;
+                            }
+                        }
+                        if(!replaced) {
                             from = at;
                         }
                         at = line.indexOf('@', at + 1);
@@ -191,6 +216,9 @@ public class AddPatchFileTestCase {
                 line = reader.readLine();
             }
             zipOut.closeEntry();
+
+            addDirectoryToZip(new File(patchTemplateDir, "patch-id"), patchId, zipOut);
+            addDirectoryToZip(new File(patchTemplateDir, "patch-element-id"), patchElementId, zipOut);
         } catch (FileNotFoundException e) {
             throw new IllegalStateException("Failed to write to " + patchFile.getAbsolutePath(), e);
         } catch (IOException e) {
@@ -201,5 +229,42 @@ public class AddPatchFileTestCase {
         }
 
         return patchFile;
+    }
+
+    private static void addDirectoryToZip(File dir, String dirName, ZipOutputStream zos) throws IOException {
+
+        final ZipEntry dirEntry = new ZipEntry(dirName + "/");
+        zos.putNextEntry(dirEntry);
+        zos.closeEntry();
+
+        File[] children = dir.listFiles();
+        if (children != null) {
+            for (File file : children) {
+                if (file.isDirectory()) {
+                    addDirectoryToZip(file, dirName + "/" + file.getName(), zos);
+                } else {
+                    addFileToZip(file, dirName, zos);
+                }
+            }
+        }
+    }
+
+    private static void addFileToZip(File file, String parent, ZipOutputStream zos) throws IOException {
+        final FileInputStream is = new FileInputStream(file);
+        try {
+            final String entryName = parent == null ? file.getName() : parent + "/" + file.getName();
+            zos.putNextEntry(new ZipEntry(entryName));
+
+            final BufferedInputStream bis = new BufferedInputStream(is);
+            try {
+                copyStream(bis, zos);
+            } finally {
+                safeClose(bis);
+            }
+
+            zos.closeEntry();
+        } finally {
+            safeClose(is);
+        }
     }
 }

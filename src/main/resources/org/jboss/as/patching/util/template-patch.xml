@@ -1,0 +1,7 @@
+<?xml version="1.0" ?>
+
+<patch xmlns="urn:jboss:patch:1.1" id="@patch-id">
+    <@patch-type name="@identity-name" version="@identity-version" @to-version/>
+    @elements
+    @misc-files
+</patch>
