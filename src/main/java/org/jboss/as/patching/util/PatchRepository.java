@@ -30,9 +30,11 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+
 import org.jboss.as.patching.IoUtils;
 import org.jboss.as.patching.PatchingException;
 import org.jboss.as.patching.logging.PatchLogger;
+import org.jboss.as.patching.metadata.Identity;
 import org.jboss.as.patching.metadata.Patch;
 import org.jboss.as.patching.metadata.Patch.PatchType;
 
@@ -246,14 +248,14 @@ public class PatchRepository {
             bundleBuilder.add(update);
             final Patch updateMetaData = PatchUtil.readMetaData(update);
             identityName = updateMetaData.getIdentity().getName();
-            identityVersion = updateMetaData.getIdentity().getVersion();
+            identityVersion = updateMetaData.getIdentity().forType(PatchType.CUMULATIVE, Identity.IdentityUpgrade.class).getVersion();
             if(identityVersion.equals(toVersion)) {
                 reachedTargetVersion = true;
             } else {
                 update = getUpdateOnly(identityName, identityVersion);
             }
         }
-        if(!reachedTargetVersion) {
+        if(!reachedTargetVersion && toVersion != null) {
             throw new PatchingException("Failed to locate update path to " + toVersion + ", latest available is " + identityVersion);
         }
         if (includePatches) {
