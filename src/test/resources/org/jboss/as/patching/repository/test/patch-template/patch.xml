@@ -6,7 +6,7 @@
         <description>
             no description
         </description>
-        <@patch-type name="@layer"/>
+        <@element-patch-type name="@layer" @add-on/>
         <modules>
             <added name="org.jboss.test" hash="bd99de0ca1311cd6aca3511809edc2d1e59d2130"/>
         </modules>
