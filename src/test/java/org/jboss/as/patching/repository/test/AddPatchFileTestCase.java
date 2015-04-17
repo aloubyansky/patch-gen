@@ -118,7 +118,7 @@ public class AddPatchFileTestCase {
         patches = repo.getPatchesInfo("product", "1.0.1");
         assertEquals(2, patches.size());
 
-        repo.getUpdateToLatest("product", "1.0.0", true, new File("/home/olubyans/patches/tests/latest-update.zip"));
+//        repo.getUpdateToLatest("product", "1.0.0", true, new File("/home/olubyans/patches/tests/latest-update.zip"));
 //        repo.getPatch("product", "1.0.0", "oneoff1", false, new File("/home/olubyans/patches/tests/oneoff1.zip"));
 //        repo.getPatch("product", "1.0.0", "cp1", true, new File("/home/olubyans/patches/tests/cp1.zip"));
     }

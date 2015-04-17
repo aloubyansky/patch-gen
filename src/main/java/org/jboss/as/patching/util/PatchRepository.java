@@ -68,58 +68,59 @@ import org.jboss.as.patching.metadata.PatchXml;
  * <pre>
  * <code>
  * ROOT
- * |-- layer1
- * |   |-- patches
- * |   |   |-- patchElementId
- * |   |   |   |-- element.xml
- * |   |   |   |-- target-identity.txt
- * |   |   |   `-- FS-tree content
+ * |-- layers
+ * |   |-- layer1
+ * |   |   |-- patches
+ * |   |   |   |-- patchElementId
+ * |   |   |   |   |-- element.xml
+ * |   |   |   |   |-- target-identity.txt
+ * |   |   |   |   `-- FS-tree content
  * |   |   |   ...
- * |   |   `-- patch-patchElementId
- * |   |       |-- element.xml
- * |   |       |-- target-identity.txt
- * |   |       `-- FS-tree content
- * |   |
- * |   `-- updates
- * |       |-- patchElementId
- * |       |   |-- element.xml
- * |       |   |-- target-identity.txt
- * |       |   `-- FS-tree content
- * |       |   ...
- * |       `-- patchElementId
- * |           |-- element.xml
- * |           |-- target-identity.txt
- * |           `-- FS-tree content
+ * |   |   |   `-- patch-patchElementId
+ * |   |   |       |-- element.xml
+ * |   |   |       |-- target-identity.txt
+ * |   |   |       `-- FS-tree content
+ * |   |   |
+ * |   |   `-- updates
+ * |   |       |-- patchElementId
+ * |   |       |   |-- element.xml
+ * |   |       |   |-- target-identity.txt
+ * |   |       |   `-- FS-tree content
+ * |   |       ...
+ * |   |       `-- patchElementId
+ * |   |           |-- element.xml
+ * |   |           |-- target-identity.txt
+ * |   |           `-- FS-tree content
  * |   ...
- * |-- layerN
- * |   |-- patches
- * |   |   |-- patchElementId
- * |   |   |   |-- element.xml
- * |   |   |   |-- target-identity.txt
- * |   |   |   `-- FS-tree content
- * |   |   |   ...
- * |   |   `-- patch-patchElementId
- * |   |       |-- element.xml
- * |   |       |-- target-identity.txt
- * |   |       `-- FS-tree content
- * |   |
- * |   `-- updates
- * |       |-- patchElementId
- * |       |   |-- element.xml
- * |       |   |-- target-identity.txt
- * |       |   `-- FS-tree content
+ * |   `-- layerN
+ * |       |-- patches
+ * |       |   |-- patchElementId
+ * |       |   |   |-- element.xml
+ * |       |   |   |-- target-identity.txt
+ * |       |   |   `-- FS-tree content
  * |       |   ...
- * |       `-- patchElementId
- * |           |-- element.xml
- * |           |-- target-identity.txt
- * |           `-- FS-tree content
+ * |       |   `-- patch-patchElementId
+ * |       |       |-- element.xml
+ * |       |       |-- target-identity.txt
+ * |       |       `-- FS-tree content
+ * |       |
+ * |       `-- updates
+ * |           |-- patchElementId
+ * |           |   |-- element.xml
+ * |           |   |-- target-identity.txt
+ * |           |   `-- FS-tree content
+ * |           ...
+ * |           `-- patchElementId
+ * |               |-- element.xml
+ * |               |-- target-identity.txt
+ * |               `-- FS-tree content
  * |
  * |-- identity-name-version
  * |   |-- patches
  * |   |   |-- patchId
  * |   |   |   |-- elements.txt
  * |   |   |   `-- misc content
- * |   |   |   ...
+ * |   |   ...
  * |   |   `-- patchId
  * |   |   |   |-- elements.txt
  * |   |       `-- misc content
@@ -128,18 +129,18 @@ import org.jboss.as.patching.metadata.PatchXml;
  * |       |   |-- update.txt
  * |       |   |-- elements.txt
  * |       |   `-- misc content
- * |       |   ...
+ * |       ...
  * |       `-- updateId
  * |           |-- update.txt
  * |           |-- elements.txt
  * |           `-- misc content
- * |   ...
+ * ...
  * `-- identity-name-version
  *     |-- patches
  *     |   |-- patchId
  *     |   |   |-- elements.txt
  *     |   |   `-- misc content
- *     |   |   ...
+ *     |   ...
  *     |   `-- patchId
  *     |       |-- elements.txt
  *     |       `-- misc content
@@ -148,7 +149,7 @@ import org.jboss.as.patching.metadata.PatchXml;
  *         |   |-- update.txt
  *         |   |-- elements.txt
  *         |   `-- misc content
- *         |   ...
+ *         ...
  *         `-- updateId
  *             |-- update.txt
  *             |-- elements.txt
@@ -162,6 +163,7 @@ public class PatchRepository {
 
     public static final String ELEMENT_XML = "element.xml";
     public static final String ELEMENTS_TXT = "elements.txt";
+    public static final String LAYERS = "layers";
     public static final String MISC_FILES_XML = "misc-files.xml";
     public static final String PATCH_ = "patch-";
     public static final String PATCHES = "patches";
@@ -319,7 +321,6 @@ public class PatchRepository {
         return f.list().length > 0;
     }
 
-    // TODO
     public File bundlePatches(String identityName, String identityVersion, File targetDir) throws PatchingException {
 
         if (targetDir == null) {
@@ -482,7 +483,7 @@ public class PatchRepository {
                 final String layer = (String) layerNames.nextElement();
                 final String elementId = layers.getProperty(layer);
 
-                final File elementDir = getFile(root, layer, update ? UPDATES : PATCHES, elementId, elementId);
+                final File elementDir = getFile(root, LAYERS, layer, update ? UPDATES : PATCHES, elementId, elementId);
                 if(!elementDir.exists()) {
                     throw new PatchingException("Directory is missing for element " + elementId);
                 }
@@ -529,7 +530,7 @@ public class PatchRepository {
             final String layer = (String) layerNames.nextElement();
             final String elementId = layers.getProperty(layer);
 
-            final File elementXml = getFile(root, layer, update ? UPDATES : PATCHES, elementId, ELEMENT_XML);
+            final File elementXml = getFile(root, LAYERS, layer, update ? UPDATES : PATCHES, elementId, ELEMENT_XML);
             if (!elementXml.exists()) {
                 throw new PatchingException("Failed to locate " + elementXml.getAbsolutePath());
             }
@@ -702,7 +703,7 @@ public class PatchRepository {
 
     private File addElementDir(Patch patch, PatchElement element, String patchXml) throws PatchingException {
 
-        final File layerDir = new File(root, element.getProvider().getName());
+        final File layerDir = getFile(root, LAYERS, element.getProvider().getName());
         ensureDir(layerDir);
 
         final PatchType patchType = element.getProvider().getPatchType();
@@ -712,8 +713,8 @@ public class PatchRepository {
 
         try {
             final String elementXml = getElementXml(patchXml, element.getId());
-            IoUtils.copyStreamAndClose(new ByteArrayInputStream(elementXml.getBytes()), new FileOutputStream(new File(
-                    elementDir, ELEMENT_XML)));
+            IoUtils.copyStreamAndClose(new ByteArrayInputStream(elementXml.getBytes()),
+                    new FileOutputStream(new File(elementDir, ELEMENT_XML)));
         } catch (IOException ex) {
             throw new PatchingException("Failed to write " + new File(elementDir, ELEMENT_XML).getAbsolutePath(), ex);
         }
