@@ -204,7 +204,8 @@ class PatchConfigBuilder implements ContentItemFilter {
                     }
                     final PatchElementConfigBuilder config = PatchConfigBuilder.this.elements.get(name);
                     if (config == null) {
-                        throw processingError("missing patch-config for layer %s", name);
+                        return null;
+                        //throw processingError("missing patch-config for layer %s", name);
                     }
                     final PatchElementBuilder builder;
                     if (config.getPatchType() == null) {
