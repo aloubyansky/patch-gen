@@ -151,7 +151,7 @@ abstract class PatchBuilderWrapper extends PatchBuilder {
                 updatedLayer = null;
             }
             //
-            compareLayer(elementBuilder, originalLayer, updatedLayer, includeVersion);
+            compareLayer(layer, elementBuilder, originalLayer, updatedLayer, includeVersion);
         }
 
         for (final String layer : updatedLayers) {
@@ -159,7 +159,7 @@ abstract class PatchBuilderWrapper extends PatchBuilder {
             final Distribution.ProcessedLayer updatedLayer = updated.getLayer(layer);
             final PatchElementBuilder elementBuilder = builder.addLayer(layer);
             //
-            compareLayer(elementBuilder, originalLayer, updatedLayer, includeVersion);
+            compareLayer(layer, elementBuilder, originalLayer, updatedLayer, includeVersion);
         }
 
         // Compare add-ons
@@ -178,12 +178,12 @@ abstract class PatchBuilderWrapper extends PatchBuilder {
                 updatedLayer = null;
             }
             //
-            compareLayer(elementBuilder, originalLayer, updatedLayer, includeVersion);
+            compareLayer(addOn, elementBuilder, originalLayer, updatedLayer, includeVersion);
         }
 
         for (final String addOn : updatedAddOns) {
             final PatchElementBuilder elementBuilder = builder.addAddOn(addOn);
-            compareLayer(elementBuilder, null, updated.getAddOn(addOn), includeVersion);
+            compareLayer(addOn, elementBuilder, null, updated.getAddOn(addOn), includeVersion);
         }
 
     }
@@ -195,9 +195,10 @@ abstract class PatchBuilderWrapper extends PatchBuilder {
      * @param originalLayer  the original layer
      * @param updatedLayer   the updated layer
      */
-    static void compareLayer(final PatchElementBuilder elementBuilder, final Distribution.ProcessedLayer originalLayer, final Distribution.ProcessedLayer updatedLayer, boolean includeVersion) {
-        compareModuleItems(elementBuilder, originalLayer.getModules(), updatedLayer.getModules(), false, includeVersion); // Modules
-        compareModuleItems(elementBuilder, originalLayer.getBundles(), updatedLayer.getBundles(), true, false);  // Bundles
+    static void compareLayer(final String layer, final PatchElementBuilder elementBuilder, final Distribution.ProcessedLayer originalLayer,
+            final Distribution.ProcessedLayer updatedLayer, boolean includeVersion) {
+        compareModuleItems(layer, elementBuilder, originalLayer.getModules(), updatedLayer.getModules(), false, includeVersion); // Modules
+        compareModuleItems(layer, elementBuilder, originalLayer.getBundles(), updatedLayer.getBundles(), true, false);  // Bundles
     }
 
     /**
@@ -208,7 +209,7 @@ abstract class PatchBuilderWrapper extends PatchBuilder {
      * @param updated        the updated module set
      * @param bundle         whether is a bundle or module
      */
-    static void compareModuleItems(final PatchElementBuilder elementBuilder, final Collection<DistributionModuleItem> original,
+    static void compareModuleItems(final String layer, final PatchElementBuilder elementBuilder, final Collection<DistributionModuleItem> original,
                                    final Collection<DistributionModuleItem> updated, boolean bundle, boolean includeVersion) {
 
         final Map<String, DistributionModuleItem> modules = new HashMap<String, DistributionModuleItem>();
@@ -219,6 +220,9 @@ abstract class PatchBuilderWrapper extends PatchBuilder {
         for (final DistributionModuleItem o : original) {
             final DistributionModuleItem n = modules.remove(o.getFullModuleName());
             if (n == null) {
+                if(elementBuilder == null) {
+                    throw processingError("missing patch-config for layer/add-on %s", layer);
+                }
                 if (bundle) {
                     elementBuilder.removeBundle(o.getName(), o.getSlot(), o.getMetadataHash());
                 } else {
@@ -226,6 +230,9 @@ abstract class PatchBuilderWrapper extends PatchBuilder {
                 }
             } else {
                 if (!Arrays.equals(n.getComparisonHash(), o.getComparisonHash())) {
+                    if(elementBuilder == null) {
+                        throw processingError("missing patch-config for layer/add-on %s", layer);
+                    }
                     if (bundle) {
                         elementBuilder.modifyBundle(n.getName(), n.getSlot(), o.getMetadataHash(), n.getMetadataHash());
                     } else {
@@ -235,17 +242,25 @@ abstract class PatchBuilderWrapper extends PatchBuilder {
                     // Treat the version module separately, since the comparison hash will ignore the version property in the manifest
                     if (includeVersion && n.getName().equals("org.jboss.as.version")) {
                         if (! Arrays.equals(o.getMetadataHash(), n.getMetadataHash())) {
+                            if(elementBuilder == null) {
+                                throw processingError("missing patch-config for layer/add-on %s", layer);
+                            }
                             elementBuilder.modifyModule(n.getName(), n.getSlot(), o.getMetadataHash(), n.getMetadataHash());
                         }
                     }
                 }
             }
         }
-        for (final DistributionModuleItem item : modules.values()) {
-            if (bundle) {
-                elementBuilder.addBundle(item.getName(), item.getSlot(), item.getMetadataHash());
-            } else {
-                elementBuilder.addModule(item.getName(), item.getSlot(), item.getMetadataHash());
+        if(!modules.isEmpty()) {
+            if(elementBuilder == null) {
+                throw processingError("missing patch-config for layer/add-on %s", layer);
+            }
+            for (final DistributionModuleItem item : modules.values()) {
+                if (bundle) {
+                    elementBuilder.addBundle(item.getName(), item.getSlot(), item.getMetadataHash());
+                } else {
+                    elementBuilder.addModule(item.getName(), item.getSlot(), item.getMetadataHash());
+                }
             }
         }
     }
