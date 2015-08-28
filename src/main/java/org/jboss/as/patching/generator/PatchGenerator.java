@@ -145,6 +145,7 @@ public class PatchGenerator {
             final PatchBuilderWrapper builder = patchConfig.toPatchBuilder();
             builder.setPatchId(patchConfig.getPatchId());
             builder.setDescription(patchConfig.getDescription());
+            builder.setOptionalPaths(patchConfig.getOptionalPaths());
             if (patchConfig.getPatchType() == Patch.PatchType.CUMULATIVE) {
                 // CPs need to upgrade
                 if (base.getVersion().equals(updated.getVersion())) {

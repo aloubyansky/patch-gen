@@ -24,14 +24,19 @@ package org.jboss.as.patching.generator;
 
 import static org.jboss.as.patching.generator.PatchGenerator.processingError;
 
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
+import org.jboss.as.patching.metadata.MiscContentItem;
 import org.jboss.as.patching.metadata.ModificationBuilderTarget;
+import org.jboss.as.patching.metadata.ModificationCondition;
 import org.jboss.as.patching.metadata.Patch;
 import org.jboss.as.patching.metadata.PatchBuilder;
 import org.jboss.as.patching.metadata.PatchElementBuilder;
@@ -43,8 +48,21 @@ import org.jboss.as.patching.metadata.PatchElementBuilder;
  */
 abstract class PatchBuilderWrapper extends PatchBuilder {
 
+
+    private FSPathElement optionalPaths = new FSPathElement("root");
+
     protected PatchBuilderWrapper() {
         //
+    }
+
+    void setOptionalPaths(Collection<OptionalPath> optionalPaths) {
+        for(OptionalPath path : optionalPaths) {
+            final String[] split = path.getValue().split("/");
+            final FSPathElement e = this.optionalPaths.addChild(split);
+            if(path.getRequires() != null) {
+                e.requires = path.getRequires().split("/");
+            }
+        }
     }
 
     abstract PatchElementBuilder modifyLayer(final String name, final boolean addOn);
@@ -133,7 +151,8 @@ abstract class PatchBuilderWrapper extends PatchBuilder {
         // Compare misc files
         final DistributionContentItem or = original.getRoot();
         final DistributionContentItem nr = updated.getRoot();
-        compareMiscFiles(builder, or, nr);
+
+        compareMiscFiles(builder, or, nr, builder.optionalPaths);
 
         // Compare layers
         final Set<String> originalLayers = new LinkedHashSet<String>(original.getLayers());
@@ -271,19 +290,19 @@ abstract class PatchBuilderWrapper extends PatchBuilder {
      * @param o the original root
      * @param n the updated root
      */
-    static void compareMiscFiles(final ModificationBuilderTarget<?> builder, final DistributionContentItem o, final DistributionContentItem n) {
+    static void compareMiscFiles(final ModificationBuilderTarget<?> builder, final DistributionContentItem o, final DistributionContentItem n, FSPathElement optionalPaths) {
         if (o == null && n == null) {
             return;
         } else if (o != null && n == null) {
-            builder.removeFile(o.getName(), o.getParent().getPathAsList(), o.getMetadataHash(), !o.isLeaf());
+            builder.removeFile(o.getName(), o.getParent().getPathAsList(), o.getMetadataHash(), !o.isLeaf(), getCondition(optionalPaths, o));
         } else if (o == null && n != null) {
             boolean directory = !n.isLeaf();
             if (directory) {
                 for (final DistributionContentItem child : n.getChildren()) {
-                    compareMiscFiles(builder, null, child);
+                    compareMiscFiles(builder, null, child, optionalPaths);
                 }
             } else {
-                builder.addFile(n.getName(), n.getParent().getPathAsList(), n.getMetadataHash(), directory);
+                builder.addFile(n.getName(), n.getParent().getPathAsList(), n.getMetadataHash(), directory, getCondition(optionalPaths, n));
             }
         } else {
             if (!n.equals(o)) {
@@ -293,7 +312,7 @@ abstract class PatchBuilderWrapper extends PatchBuilder {
                 throw processingError("TODO");
             }
             if (n.isLeaf() && !Arrays.equals(o.getComparisonHash(), n.getComparisonHash())) {
-                builder.modifyFile(n.getName(), n.getParent().getPathAsList(), o.getMetadataHash(), n.getMetadataHash(), !n.isLeaf());
+                builder.modifyFile(n.getName(), n.getParent().getPathAsList(), o.getMetadataHash(), n.getMetadataHash(), !n.isLeaf(), getCondition(optionalPaths, o));
             } else {
 
                 final Collection<DistributionContentItem> nc = n.getChildren();
@@ -304,14 +323,139 @@ abstract class PatchBuilderWrapper extends PatchBuilder {
                 // compare
                 for (final DistributionContentItem child : o.getChildren()) {
                     final DistributionContentItem item = children.remove(child.getName());
-                    compareMiscFiles(builder, child, item);
+                    compareMiscFiles(builder, child, item, optionalPaths);
                 }
                 // compare missing
                 for (final DistributionContentItem child : children.values()) {
-                    compareMiscFiles(builder, null, child);
+                    compareMiscFiles(builder, null, child, optionalPaths);
                 }
             }
         }
     }
 
+    static ModificationCondition getCondition(FSPathElement optionalPaths, DistributionContentItem item) {
+        if(optionalPaths.children.isEmpty()) {
+            return null;
+        }
+        final FSPathElement e = new FSPathElement(optionalPaths);
+        final List<String> path = matchOptionalPath(e, item);
+        if(path == null) {
+            return null;
+        }
+        final MiscContentItem misc;
+        if(e.requires != null) {
+            misc = new MiscContentItem(e.requires[0], Arrays.asList(Arrays.copyOf(e.requires, e.requires.length - 1)), null, false);
+        } else {
+            misc = new MiscContentItem(e.name, path, null, true);
+        }
+        return ModificationCondition.Factory.exists(misc);
+    }
+
+    static List<String> matchOptionalPath(FSPathElement root, DistributionContentItem item) {
+        if(item.getParent() == null || item.getParent().name == null) {
+            final FSPathElement dir = root.children.get(item.getName());
+            if(dir != null) {
+                root.linkTo(dir);
+                return Collections.emptyList();
+            }
+            return null;
+        }
+        List<String> path = matchOptionalPath(root, item.getParent());
+        if(path == null) {
+            return null;
+        }
+        if(root.children.isEmpty()) {
+            return path;
+        }
+        final FSPathElement dir = root.children.get(item.getName());
+        if(dir != null) {
+            switch(path.size()) {
+                case 0:
+                    path = Collections.singletonList(root.name);
+                    break;
+                case 1:
+                    path = new ArrayList<String>(path);
+                default:
+                    path.add(root.name);
+            }
+            root.linkTo(dir);
+            return path;
+        }
+        return null;
+    }
+
+    private static final class FSPathElement {
+        private String name;
+        private Map<String, FSPathElement> children = Collections.emptyMap();
+        private String[] requires;
+
+        FSPathElement(String name) {
+            this(null, name);
+        }
+
+        FSPathElement(FSPathElement parent, String name) {
+            assert name != null : "name is null";
+            this.name = name;
+            if(parent != null) {
+                parent.addChild(this);
+            }
+        }
+
+        FSPathElement(FSPathElement linkTo) {
+            name = linkTo.name;
+            children = linkTo.children;
+        }
+
+        FSPathElement addChild(String... names) {
+            FSPathElement parent = this;
+            FSPathElement child = null;
+            for(String name : names) {
+                child = parent.children.get(name);
+                if(child == null) {
+                    child = new FSPathElement(parent, name);
+                }
+                parent = child;
+            }
+            return child;
+        }
+
+        boolean addChild(FSPathElement child) {
+//            if(children.containsKey(child.name)) {
+//                return false;
+//            }
+            switch(children.size()) {
+                case 0:
+                    children = Collections.singletonMap(child.name, child);
+                    break;
+                case 1:
+                    children = new HashMap<String, FSPathElement>(children);
+                default:
+                    children.put(child.name, child);
+            }
+            return true;
+        }
+
+        @Override
+        public String toString() {
+            final StringBuilder buf = new StringBuilder();
+            toString(buf, 0);
+            return buf.toString();
+        }
+
+        private void toString(StringBuilder buf, int depth) {
+            for(int i = 0; i < depth; ++i) {
+                buf.append("  ");
+            }
+            buf.append(name).append("\n");
+            for(FSPathElement child : children.values()) {
+                child.toString(buf, depth + 1);
+            }
+        }
+
+        void linkTo(FSPathElement dir) {
+            this.name = dir.name;
+            this.children = dir.children;
+            this.requires = dir.requires;
+        }
+    }
 }
